@@ -6,3 +6,4 @@ print(sys.argv)
 day =sys.argv[1]
 
 print(f'data loaded successully...for day =f{day}')
+print("docker pipline testing")
