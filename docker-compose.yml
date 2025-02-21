@@ -1,83 +1,103 @@
-
-
+version: '3'
 services:
   postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
-      interval: 10s
-      retries: 5
+    image: postgres:14
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  webserver:
-    image: apache/airflow:2.2.3
     environment:
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__WEBSERVER__SECRET_KEY: ntzslMX8zNKCvlGFVKItMA==
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: airflowdb
     volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./scripts:/opt/airflow/scripts
-    command: >
-      bash -c "airflow db init && \
-               airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com && \
-               airflow webserver"
-
-  scheduler:
-    image: apache/airflow:2.2.3
-    environment:
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__WEBSERVER__SECRET_KEY: ntzslMX8zNKCvlGFVKItMA==
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-    depends_on:
-      - postgres
-      - redis
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./scripts:/opt/airflow/scripts
-    command: airflow scheduler
-
-  worker:
-    image: apache/airflow:2.2.3
-    restart: always
-    depends_on:
-      - scheduler
-      - redis
-    environment:
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-    volumes:
-      - ./dags:/usr/local/airflow/dags
-      - ./logs:/usr/local/airflow/logs
-      - ./plugins:/usr/local/airflow/plugins
-    command: airflow celery worker
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - airflow-network
 
   redis:
     image: redis:latest
-    restart: always
     ports:
       - "6379:6379"
+    networks:
+      - airflow-network
+
+  airflow-init:
+    image: apache/airflow:2.5.0
+    command: db init
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://root:root@postgres:5432/airflowdb
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://root:root@postgres:5432/airflowdb
+      - AIRFLOW_HOME=/opt/airflow
+      - AIRFLOW__WEBSERVER__SECRET_KEY=8858f8adde7eed8541ebbb82aee3a1c49cd017ef2e46c368
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - airflow-network
+    volumes:
+      - ./airflow-data/dags:/opt/airflow/dags
+      - ./airflow-data/plugins:/opt/airflow/plugins
+
+  airflow-webserver:
+    image: apache/airflow:2.5.0
+    command: webserver
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://root:root@postgres:5432/airflowdb
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://root:root@postgres:5432/airflowdb
+      - AIRFLOW__WEBSERVER__SECRET_KEY=8858f8adde7eed8541ebbb82aee3a1c49cd017ef2e46c368
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - airflow-network
+    volumes:
+      - ./airflow-data/dags:/opt/airflow/dags
+      - ./airflow-data/plugins:/opt/airflow/plugins
+
+  airflow-scheduler:
+    image: apache/airflow:2.5.0
+    command: scheduler
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://root:root@postgres:5432/airflowdb
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://root:root@postgres:5432/airflowdb
+      - AIRFLOW__WEBSERVER__SECRET_KEY=8858f8adde7eed8541ebbb82aee3a1c49cd017ef2e46c368
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - airflow-network
+    volumes:
+      - ./airflow-data/dags:/opt/airflow/dags
+      - ./airflow-data/plugins:/opt/airflow/plugins
+
+  airflow-worker:
+    image: apache/airflow:2.5.0
+    command: celery worker
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://root:root@postgres:5432/airflowdb
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://root:root@postgres:5432/airflowdb
+      - AIRFLOW__WEBSERVER__SECRET_KEY=8858f8adde7eed8541ebbb82aee3a1c49cd017ef2e46c368
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - airflow-network
+    volumes:
+      - ./airflow-data/dags:/opt/airflow/dags
+      - ./airflow-data/plugins:/opt/airflow/plugins
 
 volumes:
-  postgres_data:
+  postgres-data:
+
+networks:
+  airflow-network:
+    driver: bridge
