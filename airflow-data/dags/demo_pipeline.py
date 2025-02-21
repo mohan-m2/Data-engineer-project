@@ -1,13 +1,15 @@
-# filepath: /usr/local/airflow/dags/demo_pipeline.py
-
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import sys
 import os
 
-# Ensure Airflow finds the script correctly
-sys.path.append('/usr/local/airflow/scripts')
+# Dynamically add scripts directory to sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__), "../plugins"))
+
+# Now, import the task
+from demo import my_task
+
 
 try:
     from demo import my_task
